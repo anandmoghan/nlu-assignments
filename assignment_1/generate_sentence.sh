@@ -1,3 +1,5 @@
+#!/bin/bash
+cd "$(dirname "$0")"
 if [ ! -f brown_gutenberg.json ]; then
     echo "Executing the main script"
     python3 main.py
