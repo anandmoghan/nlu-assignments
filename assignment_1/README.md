@@ -6,4 +6,4 @@ Execute `python3 main.py` to generate all the models and check the perplexity in
 On execution it will ask you whether you want the model retrained on both of `brown` and `gutenberg` models if the jsons are already present. You can give (Y/N) accordingly.
 
 ### Generate Sentences
-Execute `generate_sentence.sh` script to build a sentence out of the model. If the is not trained model data present, it will automatically execute `main.py` to build the model and then generates the sentence. 
+Execute `generate_sentence.sh` script to build a sentence out of the model. If the trained model data is not present, it will automatically execute `main.py` to build the model and then generates the sentence. 
