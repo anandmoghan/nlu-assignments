@@ -10,36 +10,32 @@ import json
 import re
 import os
 
+from tensorflow.python.ops.nn_ops import sparse_softmax_cross_entropy_with_logits
+UNKNOWN = '<unk>'
+
 
 class DataModel:
-    UNKNOWN = '<unk>'
     MIN_WORD_COUNT = 1
 
-    def __init__(self, batch_size, seq_length, save_dir, train_percent=0.8, dev_percent=0.1):
-        self.batch_size = batch_size
-        self.seq_length = seq_length
+    def __init__(self, batch_size, seq_length, save_dir, train_percent=0.85, dev_percent=0):
         self.save_dir = save_dir
 
         print('Pre-processing...')
         start_time = time.time()
         train_data = dev_data = test_data = []
         files = nltk.corpus.gutenberg.fileids()
-        files = ['austen-sense.txt']
         for file in files:
-            data = nltk.corpus.gutenberg.sents(file)
-            f_train_data, f_dev_data, f_test_data = self.split_data(data, train_percent, dev_percent)
+            data = nltk.corpus.gutenberg.raw(file)
+            f_train_data, f_dev_data, f_test_data = self.split_data(self.clean_text(data), train_percent, dev_percent)
             train_data += self.clean_tokenize(f_train_data)
             dev_data += self.clean_tokenize(f_dev_data)
             test_data += self.clean_tokenize(f_test_data)
 
         words = itertools.chain.from_iterable(train_data)
-
         w_counter = Counter(words)
-        train_data = self.put_unknown(train_data, w_counter)
+        words = train_data = self.put_unknown(train_data, w_counter)
         dev_data = self.put_unknown(train_data, w_counter)
         test_data = self.put_unknown(train_data, w_counter)
-
-        print(train_data)
 
         json_content = json.dumps({
             'train_data': train_data,
@@ -49,13 +45,11 @@ class DataModel:
         with open(self.get_file_name('gutenberg.json'), 'w') as f:
             f.write(json_content)
 
-        print(train_data)
-
-        self.vocab = sorted(set(train_data))
+        self.vocab = sorted(set(words))
         self.vocab_size = len(self.vocab)
-        self.train_len = len(train_data)
+        self.train_len = len(words)
         self.word_to_value = dict((word, i) for i, word in enumerate(self.vocab))
-        self.word_value_set = np.array([self.word_to_value[word] for word in train_data])
+        self.word_value_set = np.array([self.word_to_value[word] for word in words])
         self.save_object(self.vocab, self.get_file_name('vocab.pkl'))
         self.save_object(self.word_to_value, self.get_file_name('word_to_value.pkl'))
         np.save(self.get_file_name('word_value_set.npy'), self.word_value_set)
@@ -66,17 +60,18 @@ class DataModel:
         limit = self.n_batches * batch_size * seq_length
         data_x = self.word_value_set[:limit]
         data_y = self.word_value_set[1:limit + 1]
-        self.batch_x = np.split(np.reshape(data_x, [self.batch_size, -1]), self.n_batches, 1)
-        self.batch_y = np.split(np.reshape(data_y, [self.batch_size, -1]), self.n_batches, 1)
+        self.batch_x = np.split(np.reshape(data_x, [batch_size, -1]), self.n_batches, 1)
+        self.batch_y = np.split(np.reshape(data_y, [batch_size, -1]), self.n_batches, 1)
         end_time = time.time()
         print('Finished in %d minutes %d seconds' % ((end_time - start_time) / 60, (end_time - start_time) % 60))
 
     def put_unknown(self, data, w_counter):
-        return [[self.UNKNOWN if w_counter[word] < self.MIN_WORD_COUNT else word for word in sent] for sent in data]
+        words = itertools.chain.from_iterable(data)
+        return [UNKNOWN if w_counter[word] <= self.MIN_WORD_COUNT else word for word in words]
 
     @staticmethod
     def clean_text(text):
-        text = re.sub('([\d]+)|(\'\')|(\s[\']+)|[";*:`~$]+|(--)|([\s]+-[\s]+)|[()\[\]]|([\n])', ' ', text)
+        text = re.sub('([\d]+)|(\'\')|(\s[\']+)|[";*:`~$]+|[-]{2,}|([\s]+-[\s]+)|[()\[\]]|([\n])', ' ', text)
         text = text.lower()
         return nltk.tokenize.sent_tokenize(text)
 
@@ -84,7 +79,7 @@ class DataModel:
     def clean_tokenize(text):
         sentences = []
         for sent in text:
-            words = ['<s>'] + sent
+            words = ['<s>'] + nltk.tokenize.word_tokenize(sent)
             words[-1] = '</s>'
             sentences += [words]
         return sentences
@@ -121,43 +116,37 @@ class TokenLSTM:
             args.batch_size = 1
             args.seq_length = 1
 
+        self.input_data = tf.placeholder(tf.int32, [args.batch_size, args.seq_length])
+        self.targets = tf.placeholder(tf.int32, [args.batch_size, args.seq_length])
+
+        embedding = tf.get_variable("embedding", [args.vocab_size, args.rnn_size])
+
         cells = []
         for _ in range(args.rnn_layers):
             cells.append(rnn.BasicLSTMCell(args.rnn_size))
-
         self.cell = cell = rnn.MultiRNNCell(cells, state_is_tuple=True)
-        self.input_data = tf.placeholder(tf.int32, [args.batch_size, args.seq_length])
-        self.targets = tf.placeholder(tf.int32, [args.batch_size, args.seq_length])
-        self.initial_state = cell.zero_state(args.batch_size, tf.float32)
 
-        with tf.variable_scope('rnnlm'):
-            softmax_w = tf.get_variable("softmax_w", [args.rnn_size, args.vocab_size])
-            softmax_b = tf.get_variable("softmax_b", [args.vocab_size])
+        dense_layer_w = tf.get_variable("dense_layer_w", [args.rnn_size, args.vocab_size])
+        dense_layer_b = tf.get_variable("dense_layer_b", [args.vocab_size])
 
-        embedding = tf.get_variable("embedding", [args.vocab_size, args.rnn_size])
         inputs = tf.nn.embedding_lookup(embedding, self.input_data)
         inputs = tf.split(inputs, args.seq_length, 1)
-        inputs = [tf.squeeze(input_, [1]) for input_ in inputs]
+        inputs = [tf.squeeze(ip, [1]) for ip in inputs]
 
-        def loop(prev, _):
-            prev = tf.matmul(prev, softmax_w) + softmax_b
-            prev_symbol = tf.stop_gradient(tf.argmax(prev, 1))
-            return tf.nn.embedding_lookup(embedding, prev_symbol)
-
-        outputs, self.final_state = legacy_seq2seq.rnn_decoder(inputs, self.initial_state, cell, loop_function=loop if not training else None, scope='rnnlm')
+        self.initial_state = cell.zero_state(args.batch_size, tf.float32)
+        outputs, self.final_state = legacy_seq2seq.rnn_decoder(inputs, self.initial_state, cell)
         output = tf.reshape(tf.concat(outputs, 1), [-1, args.rnn_size])
-
-        self.logits = tf.matmul(output, softmax_w) + softmax_b
-        self.probs = tf.nn.softmax(self.logits)
+        logits = tf.matmul(output, dense_layer_w) + dense_layer_b
+        self.probs = tf.nn.softmax(logits)
         self.predicted_output = tf.reshape(tf.argmax(self.probs, 1), [args.batch_size, args.seq_length])
 
         self.lr = tf.Variable(0.0, trainable=False)
-        loss = legacy_seq2seq.sequence_loss_by_example([self.logits], [tf.reshape(self.targets, [-1])], [tf.ones([args.batch_size * args.seq_length])])
-        self.cost = tf.reduce_sum(loss) / (args.batch_size * args.seq_length)
+        loss = sparse_softmax_cross_entropy_with_logits(logits=logits, labels=tf.reshape(self.targets, [-1]))
+        self.cost = tf.reduce_mean(loss)
         self.optimizer = tf.train.AdamOptimizer(self.lr).minimize(self.cost)
 
     def get_file_name(self, file_name):
-        return self.save_dir + '/' + file_name
+        return self.args.save_dir + '/' + file_name
 
     def train(self, data_model):
         args = self.args
@@ -168,8 +157,8 @@ class TokenLSTM:
             sess.run(init)
             for e in range(args.epochs):
                 sess.run(tf.assign(self.lr, args.lr * (args.decay ** e)))
-                state = sess.run(self.initial_state)
                 for b in range(num_batches):
+                    state = sess.run(self.initial_state)
                     x, y = data_model.get_batch(b)
                     feed = {
                         self.input_data: x,
@@ -180,11 +169,41 @@ class TokenLSTM:
                         feed[h] = state[i].h
                     _, train_loss, state, predicted_output = sess.run([self.optimizer, self.cost, self.final_state, self.predicted_output], feed)
                     accuracy = np.sum(np.equal(y, predicted_output)) / float(y.size)
-                    print("{}/{} - Epoch {}, Loss = {:.3f}, Accuracy = {}".format(e * num_batches + b, args.epochs * num_batches, e, train_loss, accuracy))
+                    print("{}/{} : Epoch {} - Loss = {:.3f}, Accuracy = {}".format(e * num_batches + b, args.epochs * num_batches, e, train_loss, accuracy))
                     if (e * num_batches + b) % args.save_every == 0 or (e == args.epochs - 1 and b == data_model.num_batches() - 1):
                         checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
                         tf_saver.save(sess, checkpoint_path, global_step=e * num_batches + b)
                         print("Model saved to {}".format(checkpoint_path))
+
+    def test(self, vocab, test_data):
+        args = self.args
+        init = tf.global_variables_initializer()
+        test_data = list(itertools.chain.from_iterable(test_data))
+        word_to_value = dict((c, i) for i, c in enumerate(vocab))
+        test_value_set = np.array([word_to_value[word] for word in test_data])
+        n_batches = int(len(test_data) / args.seq_length)
+        limit = n_batches * args.seq_length
+        data_x = np.reshape(test_value_set[:limit], [n_batches, args.seq_length])
+        data_y = np.reshape(test_value_set[1:limit+1], [n_batches, args.seq_length])
+        with tf.Session() as sess:
+            sess.run(init)
+            tf_saver = tf.train.Saver(tf.global_variables())
+            checkpoint = tf.train.get_checkpoint_state(args.save_dir)
+            if checkpoint and checkpoint.model_checkpoint_path:
+                tf_saver.restore(sess, checkpoint.model_checkpoint_path)
+            state = sess.run(self.cell.zero_state(1, tf.float32))
+            ppl = 0
+            for i in range(n_batches):
+                seq = np.reshape(data_x[i, :], [args.batch_size, args.seq_length])
+                feed = {self.input_data: seq, self.initial_state: state}
+                prob, state = sess.run([self.probs, self.final_state], feed)
+                prob = np.log(prob[np.arange(len(prob)), data_y[i, :]])
+                ppl += np.sum(prob)
+                if i % 100 == 0:
+                    print('Processed Batch {}/{} : Current Perplexity = {}'.format((i+1), n_batches, np.exp(-ppl/(args.seq_length*(i+1)))))
+            ppl /= args.seq_length * n_batches
+            ppl = np.exp(-ppl)
+            return ppl
 
     def generate(self, vocab, start, num_predictions):
         args = self.args

@@ -23,7 +23,6 @@ class DataModel:
         print('Pre-processing...')
         start_time = time.time()
         files = nltk.corpus.gutenberg.fileids()
-        files = ['austen-sense.txt']
         train_data = dev_data = test_data = ''
         for file in files:
             data = nltk.corpus.gutenberg.raw(file)
@@ -94,12 +93,8 @@ class DataModel:
 
 
 class CharacterLSTM:
-    def __init__(self, args, training=True):
+    def __init__(self, args):
         self.args = args
-        if not training:
-            args.batch_size = 1
-            args.seq_length = 1
-
         self.input_data = tf.placeholder(tf.int32, [args.batch_size, args.seq_length])
         self.targets = tf.placeholder(tf.int32, [args.batch_size, args.seq_length])
 
@@ -125,7 +120,6 @@ class CharacterLSTM:
         self.predicted_output = tf.reshape(tf.argmax(self.probs, 1), [args.batch_size, args.seq_length])
 
         self.lr = tf.Variable(0.0, trainable=False)
-        # loss = legacy_seq2seq.sequence_loss_by_example([logits], [tf.reshape(self.targets, [-1])], [tf.ones([args.batch_size * args.seq_length])])
         loss = sparse_softmax_cross_entropy_with_logits(logits=logits, labels=tf.reshape(self.targets, [-1]))
         self.cost = tf.reduce_mean(loss)
         self.optimizer = tf.train.AdamOptimizer(self.lr).minimize(self.cost)
@@ -165,6 +159,10 @@ class CharacterLSTM:
         init = tf.global_variables_initializer()
         char_to_value = dict((c, i) for i, c in enumerate(character_set))
         test_value_set = np.array([char_to_value[c] for c in test_data])
+        n_batches = int(len(test_data) / args.seq_length)
+        limit = n_batches * args.seq_length
+        data_x = np.reshape(test_value_set[:limit], [n_batches, args.seq_length])
+        data_y = np.reshape(test_value_set[1:limit+1], [n_batches, args.seq_length])
         with tf.Session() as sess:
             sess.run(init)
             tf_saver = tf.train.Saver(tf.global_variables())
@@ -173,21 +171,20 @@ class CharacterLSTM:
                 tf_saver.restore(sess, checkpoint.model_checkpoint_path)
             state = sess.run(self.cell.zero_state(1, tf.float32))
             ppl = 0
-            n_groups = int(len(test_value_set) / args.seq_length)
-            test_seq = test_value_set[:n_groups * args.seq_length]
-            test_seq = np.reshape(test_seq, [n_groups, args.seq_length])
-            for i in range(n_groups - 1):
-                seq = np.reshape(test_seq[i, :], [args.batch_size, args.seq_length])
+            for i in range(n_batches):
+                seq = np.reshape(data_x[i, :], [args.batch_size, args.seq_length])
                 feed = {self.input_data: seq, self.initial_state: state}
                 prob, state = sess.run([self.probs, self.final_state], feed)
-                prob = np.log(prob[np.arange(len(prob)), test_seq[i+1, :]])
+                prob = np.log(prob[np.arange(len(prob)), data_y[i, :]])
                 ppl += np.sum(prob)
-            ppl /= (args.seq_length * (n_groups - 1))
+            ppl /= args.seq_length * n_batches
             ppl = np.exp(-ppl)
             return ppl
 
     def generate(self, character_set, start, num_predictions):
         args = self.args
+        args.batch_size = 1
+        args.seq_length = 1
         init = tf.global_variables_initializer()
         char_to_value = dict((c, i) for i, c in enumerate(character_set))
         value_to_char = dict((i, c) for i, c in enumerate(character_set))

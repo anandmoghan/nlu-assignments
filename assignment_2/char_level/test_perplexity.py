@@ -23,9 +23,7 @@ with open(args.save_dir + '/gutenberg.json', 'r') as f:
     json_content = json.load(f)
     test_data = json_content['test_data']
 
-args.seq_length = 2
-args.batch_size = 1
-model_args.seq_length = 2
+model_args.seq_length = 100
 model_args.batch_size = 1
 
 model = CharacterLSTM(model_args)

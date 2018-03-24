@@ -23,6 +23,6 @@ with open(args.save_dir + '/args.pkl', 'rb') as f:
 with open(args.save_dir + '/character_set.pkl', 'rb') as f:
     character_set = pickle.load(f)
 
-model = CharacterLSTM(model_args, training=False)
+model = CharacterLSTM(model_args)
 sentence = model.generate(character_set, clean_text(args.start), args.predict)
 print(sentence)
