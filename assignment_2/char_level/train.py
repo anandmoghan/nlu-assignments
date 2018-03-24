@@ -2,7 +2,7 @@ import argparse
 import pickle
 
 import time
-from char_models import CharacterLSTM, DataModel
+from models import CharacterLSTM, DataModel
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--save_dir', type=str, default='./save', help='Directory to save model checkpoints')

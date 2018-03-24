@@ -5,15 +5,25 @@ import pickle
 import nltk
 import time
 import json
+import sys
 import re
 import os
 
 from tensorflow.python.ops.nn_ops import sparse_softmax_cross_entropy_with_logits
 
+UNKNOWN = '@'
+
+
+def update_progress(current, total, suffix=''):
+    bar_len = 60
+    filled_len = int(round(bar_len * current / float(total)))
+    percents = round(100.0 * current / float(total), 1)
+    bar = '=' * filled_len + '-' * (bar_len - filled_len)
+    sys.stdout.write('[%s] %s%s ...%s\r' % (bar, percents, '%', suffix))
+    sys.stdout.flush()
+
 
 class DataModel:
-    UNKNOWN = '@'
-
     def __init__(self, batch_size, seq_length, character_set, save_dir, train_percent=0.8, dev_percent=0.1):
         self.batch_size = batch_size
         self.seq_length = seq_length
@@ -60,10 +70,11 @@ class DataModel:
         end_time = time.time()
         print('Finished in %d minutes %d seconds' % ((end_time - start_time) / 60, (end_time - start_time) % 60))
 
-    def clean_text(self, text, exp):
+    @staticmethod
+    def clean_text(text, exp):
         text = text.lower()
-        text = re.sub("([-]{2,})|(\\n)", ' ', text)
-        text = re.sub(exp, self.UNKNOWN, text)
+        text = re.sub("([-]{2,})|(\\n)|[\s]+", ' ', text)
+        text = re.sub(exp, UNKNOWN, text)
         text = nltk.tokenize.sent_tokenize(text)
         return text
 
@@ -147,8 +158,8 @@ class CharacterLSTM:
                         feed[c] = state[i].c
                         feed[h] = state[i].h
                     _, train_loss, state, predicted_output = sess.run([self.optimizer, self.cost, self.final_state, self.predicted_output], feed)
-                    accuracy = np.sum(np.equal(y, predicted_output)) / float(y.size)
-                    print("{}/{} - Epoch {}, Loss = {:.3f}, Accuracy = {}".format(e * num_batches + b, args.epochs * num_batches, e, train_loss, accuracy))
+                    accuracy = 100 * np.sum(np.equal(y, predicted_output)) / float(y.size)
+                    print("{}/{} : Epoch {} - Loss = {:.3f}, Accuracy = {:.2f}".format(e * num_batches + b, args.epochs * num_batches, e, train_loss, accuracy))
                     if (e * num_batches + b) % args.save_every == 0 or (e == args.epochs - 1 and b == data_model.num_batches() - 1):
                         checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
                         tf_saver.save(sess, checkpoint_path, global_step=e * num_batches + b)
@@ -157,6 +168,7 @@ class CharacterLSTM:
     def test(self, character_set, test_data):
         args = self.args
         init = tf.global_variables_initializer()
+        character_set = sorted(character_set)
         char_to_value = dict((c, i) for i, c in enumerate(character_set))
         test_value_set = np.array([char_to_value[c] for c in test_data])
         n_batches = int(len(test_data) / args.seq_length)
@@ -177,17 +189,18 @@ class CharacterLSTM:
                 prob, state = sess.run([self.probs, self.final_state], feed)
                 prob = np.log(prob[np.arange(len(prob)), data_y[i, :]])
                 ppl += np.sum(prob)
+                update_progress(i+1, n_batches, 'Current Perplexity = {:.2f}'.format(np.exp(-ppl/(args.seq_length*(i+1)))))
             ppl /= args.seq_length * n_batches
             ppl = np.exp(-ppl)
             return ppl
 
-    def generate(self, character_set, start, num_predictions):
+    def generate(self, character_set, start, num_words):
         args = self.args
-        args.batch_size = 1
-        args.seq_length = 1
         init = tf.global_variables_initializer()
+        character_set = sorted(character_set)
         char_to_value = dict((c, i) for i, c in enumerate(character_set))
         value_to_char = dict((i, c) for i, c in enumerate(character_set))
+        dot_value = char_to_value['.']
         sentence = start
         with tf.Session() as sess:
             sess.run(init)
@@ -202,14 +215,22 @@ class CharacterLSTM:
                 state = sess.run(self.final_state, feed)
 
             c = start[-1]
-            for i in range(num_predictions):
+            tot_len = 0
+            while not tot_len == num_words:
                 x = np.reshape(char_to_value[c], [1, 1])
                 feed = {self.input_data: x, self.initial_state: state}
                 prob, state = sess.run([self.probs, self.final_state], feed)
+                prob = prob[0]
                 if c == ' ':
-                    val = int(np.searchsorted(np.cumsum(prob[0]), np.random.rand(1)))
+                    tot_len += 1
+                    if prob[dot_value] > 0.05 and tot_len == num_words:
+                        val = dot_value
+                    else:
+                        val = int(np.searchsorted(np.cumsum(prob), np.random.rand(1)))
+                elif c == UNKNOWN:
+                    continue
                 else:
-                    val = int(np.argmax(prob[0]))
+                    val = int(np.argmax(prob))
                 c = value_to_char[val]
                 sentence += c
             return sentence

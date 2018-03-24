@@ -7,11 +7,21 @@ import pickle
 import nltk
 import time
 import json
+import sys
 import re
 import os
 
 from tensorflow.python.ops.nn_ops import sparse_softmax_cross_entropy_with_logits
 UNKNOWN = '<unk>'
+
+
+def update_progress(current, total, suffix=''):
+    bar_len = 60
+    filled_len = int(round(bar_len * current / float(total)))
+    percents = round(100.0 * current / float(total), 1)
+    bar = '=' * filled_len + '-' * (bar_len - filled_len)
+    sys.stdout.write('[%s] %s%s ...%s\r' % (bar, percents, '%', suffix))
+    sys.stdout.flush()
 
 
 class DataModel:
@@ -168,8 +178,8 @@ class TokenLSTM:
                         feed[c] = state[i].c
                         feed[h] = state[i].h
                     _, train_loss, state, predicted_output = sess.run([self.optimizer, self.cost, self.final_state, self.predicted_output], feed)
-                    accuracy = np.sum(np.equal(y, predicted_output)) / float(y.size)
-                    print("{}/{} : Epoch {} - Loss = {:.3f}, Accuracy = {}".format(e * num_batches + b, args.epochs * num_batches, e, train_loss, accuracy))
+                    accuracy = 100 * np.sum(np.equal(y, predicted_output)) / float(y.size)
+                    print("{}/{} : Epoch {} - Loss = {:.3f}, Accuracy = {:.2f}".format(e * num_batches + b, args.epochs * num_batches, e, train_loss, accuracy))
                     if (e * num_batches + b) % args.save_every == 0 or (e == args.epochs - 1 and b == data_model.num_batches() - 1):
                         checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
                         tf_saver.save(sess, checkpoint_path, global_step=e * num_batches + b)
@@ -199,8 +209,7 @@ class TokenLSTM:
                 prob, state = sess.run([self.probs, self.final_state], feed)
                 prob = np.log(prob[np.arange(len(prob)), data_y[i, :]])
                 ppl += np.sum(prob)
-                if i % 100 == 0:
-                    print('Processed Batch {}/{} : Current Perplexity = {}'.format((i+1), n_batches, np.exp(-ppl/(args.seq_length*(i+1)))))
+                update_progress(i+1, n_batches, 'Current Perplexity = {:.2f}'.format(np.exp(-ppl / (args.seq_length * (i + 1)))))
             ppl /= args.seq_length * n_batches
             ppl = np.exp(-ppl)
             return ppl
