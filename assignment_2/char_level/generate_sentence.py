@@ -15,7 +15,7 @@ def clean_text(text):
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--save_dir', type=str, default='./save', help='Directory to save model checkpoints')
-parser.add_argument('--start', type=str, default='the sun ', help='Start of the generation')
+parser.add_argument('--start', type=str, default='Thy lord', help='Start of the generation')
 parser.add_argument('--predict', type=int, default=10, help='No of predictions')
 args = parser.parse_args()
 
@@ -30,4 +30,5 @@ with open(args.save_dir + '/character_set.pkl', 'rb') as f:
 
 model = CharacterLSTM(model_args)
 sentence = model.generate(character_set, clean_text(args.start), args.predict)
+sentence = sentence[:-1] + '.'
 print(sentence)

@@ -18,7 +18,7 @@ def tokenize(text):
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--save_dir', type=str, default='./save', help='Directory to save model checkpoints')
 parser.add_argument('--start', type=str, default='the', help='Start of the generation')
-parser.add_argument('--predict', type=int, default=20, help='No of predictions')
+parser.add_argument('--predict', type=int, default=10, help='No of predictions')
 args = parser.parse_args()
 
 with open(args.save_dir + '/args.pkl', 'rb') as f:

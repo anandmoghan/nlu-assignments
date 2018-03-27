@@ -12,7 +12,7 @@ parser.add_argument('--lr', type=float, default=0.002, help='Learning Rate')
 parser.add_argument('--decay', type=float, default=0.97, help='Decay Rate')
 parser.add_argument('--batch_size', type=int, default=100, help='Mini-batch size')
 parser.add_argument('--seq_length', type=int, default=50, help='Sequence Length')
-parser.add_argument('--epochs', type=int, default=50, help='No:of Epochs')
+parser.add_argument('--epochs', type=int, default=30, help='No:of Epochs')
 parser.add_argument('--save_every', type=int, default=1000, help='save frequency')
 args = parser.parse_args()
 

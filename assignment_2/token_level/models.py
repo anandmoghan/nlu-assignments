@@ -11,6 +11,8 @@ import sys
 import re
 import os
 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
+
 from tensorflow.python.ops.nn_ops import sparse_softmax_cross_entropy_with_logits
 UNKNOWN = '<unk>'
 
@@ -188,7 +190,6 @@ class TokenLSTM:
     def test(self, vocab, test_data):
         args = self.args
         init = tf.global_variables_initializer()
-        test_data = list(itertools.chain.from_iterable(test_data))
         word_to_value = dict((c, i) for i, c in enumerate(vocab))
         test_value_set = np.array([word_to_value[word] for word in test_data])
         n_batches = int(len(test_data) / args.seq_length)
@@ -239,5 +240,8 @@ class TokenLSTM:
                 prob, state = sess.run([self.probs, self.final_state], feed)
                 val = int(np.searchsorted(np.cumsum(prob[0]), np.random.rand(1)))
                 word = value_to_word[val]
+                if (not i == num_predictions-1 and word == '</s>') or word =='<s>' or word == UNKNOWN:
+                    i -= 1
+                    pass
                 sentence += [word]
             return sentence

@@ -8,7 +8,7 @@ import json
 import sys
 import re
 import os
-
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
 from tensorflow.python.ops.nn_ops import sparse_softmax_cross_entropy_with_logits
 
 UNKNOWN = '@'
@@ -215,7 +215,7 @@ class CharacterLSTM:
                 state = sess.run(self.final_state, feed)
 
             c = start[-1]
-            tot_len = 0
+            tot_len = 1
             while not tot_len == num_words:
                 x = np.reshape(char_to_value[c], [1, 1])
                 feed = {self.input_data: x, self.initial_state: state}
@@ -233,4 +233,4 @@ class CharacterLSTM:
                     val = int(np.argmax(prob))
                 c = value_to_char[val]
                 sentence += c
-            return sentence
+            return sentence[:-1]
