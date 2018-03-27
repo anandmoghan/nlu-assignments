@@ -1,0 +1,7 @@
+nltk - pip3 install --user nltk
+tensorflow - pip install --user tensorflow
+itertools - pip3 install --user itertools
+json - pip3 install --user json
+pickle - pip3 install --user pickle
+numpy - pip3 install --user numpy
+argparse - pip3 install --user argparse
