@@ -7,7 +7,7 @@ from keras.models import Model, Input
 from keras_contrib.layers import CRF
 from itertools import chain
 
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import pickle
@@ -78,20 +78,20 @@ print(model.summary())
 
 if not args.test:
     history = model.fit(train_sentences, np.array(train_tags), batch_size=64, epochs=5, validation_split=0.1, verbose=1)
-    hist = pd.DataFrame(history.history)
-
     model_json = model.to_json()
     with open("model.json", "w") as json_file:
         json_file.write(model_json)
     model.save_weights("new_model.h5")
     print("Saved model to disk")
 
+    '''
+    hist = pd.DataFrame(history.history)
     plt.style.use("ggplot")
     plt.figure(figsize=(12, 12))
     plt.plot(hist["acc"], 'b', label='Train Accuracy')
     plt.plot(hist["val_acc"], 'r', label='Validation Accuracy')
     plt.legend()
-    plt.savefig('plot.png')
+    plt.savefig('plot.png')'''
 
 model.load_weights('new_model.h5')
 test_pred = model.predict(test_sentences)
