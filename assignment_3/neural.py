@@ -8,23 +8,11 @@ from keras_contrib.layers import CRF
 from itertools import chain
 
 # import matplotlib.pyplot as plt
-import pandas as pd
+# import pandas as pd
 import numpy as np
-import pickle
-from argparse import ArgumentParser
 
 
 MAX_LEN = 60
-
-
-parser = ArgumentParser()
-parser.add_argument('--test', action='store_true', help='Test Data')
-args = parser.parse_args()
-
-
-def save_object(file_name, obj):
-    with open(file_name, 'wb') as pf:
-        pickle.dump(obj, pf, pickle.HIGHEST_PROTOCOL)
 
 
 sentences = []
@@ -76,24 +64,17 @@ model = Model(input_layer, crf_output)
 model.compile(optimizer="rmsprop", loss=crf.loss_function, metrics=[crf.accuracy])
 print(model.summary())
 
-if not args.test:
-    history = model.fit(train_sentences, np.array(train_tags), batch_size=64, epochs=5, validation_split=0.1, verbose=1)
-    model_json = model.to_json()
-    with open("model.json", "w") as json_file:
-        json_file.write(model_json)
-    model.save_weights("new_model.h5")
-    print("Saved model to disk")
+history = model.fit(train_sentences, np.array(train_tags), batch_size=64, epochs=5, validation_split=0.1, verbose=1)
 
-    '''
-    hist = pd.DataFrame(history.history)
-    plt.style.use("ggplot")
-    plt.figure(figsize=(12, 12))
-    plt.plot(hist["acc"], 'b', label='Train Accuracy')
-    plt.plot(hist["val_acc"], 'r', label='Validation Accuracy')
-    plt.legend()
-    plt.savefig('plot.png')'''
+'''
+hist = pd.DataFrame(history.history)
+plt.style.use("ggplot")
+plt.figure(figsize=(12, 12))
+plt.plot(hist["acc"], 'b', label='Train Accuracy')
+plt.plot(hist["val_acc"], 'r', label='Validation Accuracy')
+plt.legend()
+plt.savefig('plot.png')'''
 
-model.load_weights('new_model.h5')
 test_pred = model.predict(test_sentences)
 test_pred = np.argmax(test_pred, axis=2)
 
